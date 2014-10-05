@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:batch="http://www.springframework.org/schema/batch"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/batch
+    http://www.springframework.org/schema/batch/spring-batch.xsd
+    http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+
+     http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <context:component-scan base-package="com.groovy.springbatch.batch"/>
+
+    <!--Load our properties file-->
+    <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="location" value="batch.properties"/>
+    </bean>
+
+    <!-- Initialize the database before every test case: -->
+    <bean id="dataSourceInitializer" class="org.springframework.batch.test.DataSourceInitializer">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="initScripts">
+            <list>
+                <value>${batch.drop.script}</value>
+                <value>${batch.schema.script}</value>
+            </list>
+        </property>
+    </bean>
+
+    <bean id="dataSource" class="com.jolbox.bonecp.BoneCPDataSource">
+        <property name="driverClass" value="${batch.jdbc.driver}"/>
+        <property name="jdbcUrl" value="${batch.jdbc.url}"/>
+        <property name="username" value="${batch.jdbc.user}"/>
+        <property name="password" value="${batch.jdbc.password}"/>
+    </bean>
+
+    <bean id="transactionManager"
+          class="org.springframework.jdbc.datasource.DataSourceTransactionManager"
+          lazy-init="true">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <bean id="jobRepository"
+          class="org.springframework.batch.core.repository.support.JobRepositoryFactoryBean">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="transactionManager" ref="transactionManager"/>
+        <property name="databaseType" value="H2"/>
+    </bean>
+
+    <bean id="jobLauncher"
+          class="org.springframework.batch.core.launch.support.SimpleJobLauncher">
+        <property name="jobRepository" ref="jobRepository"/>
+    </bean>
+
+    <bean id="personItemReader"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="sql">
+            <value><![CDATA[SELECT * FROM Person;]]></value>
+        </property>
+        <property name="rowMapper">
+            <bean class="com.groovy.springbatch.domain.PersonRowMapper"/>
+        </property>
+    </bean>
+
+    <bean id="sheepItemWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="sql">
+            <value><![CDATA[INSERT INTO SHEEP VALUES(:id);]]></value>
+        </property>
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider"/>
+        </property>
+    </bean>
+
+    <batch:job id="PersonJob" restartable="false" job-repository="jobRepository">
+        <batch:step id="step1">
+            <tasklet>
+                <chunk reader="personItemReader"
+                       processor="personItemProcessor"
+                       writer="sheepItemWriter"
+                       commit-interval="10"/>
+                <!--TODO Set appropriate commit-interval value-->
+            </tasklet>
+        </batch:step>
+    </batch:job>
+
+</beans>
